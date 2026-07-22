@@ -1,0 +1,53 @@
+# Oakmore Billing Platform — Render Blueprint (services added phase by phase).
+# Reused services (core-auth, email dispatch) stay as their existing Render services.
+services:
+  # --- API gateway (FastAPI BFF: edge auth via core-auth, tenant resolution, routing) ---
+  - type: web
+    name: oakmore-gateway
+    runtime: docker
+    dockerfilePath: ./services/gateway/Dockerfile
+    envVars:
+      - key: CORE_AUTH_URL
+        value: https://prod-core-svc-auth-api.onrender.com/v0/
+      - key: EMAIL_DISPATCH_URL
+        value: https://core-svc-dispatch.onrender.com/
+
+  # --- Products service ---
+  - type: web
+    name: oakmore-products
+    runtime: python
+    buildCommand: pip install -e ./services/products-service
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --app-dir services/products-service
+    healthCheckPath: /health
+    envVars:
+      # DB-per-tenant DSNs (one per tenant Postgres). Add per onboarded tenant.
+      - key: TENANT_ATTENTIVE_DATABASE_URL
+        sync: false
+      - key: TENANT_OAKMORELABS_DATABASE_URL
+        sync: false
+
+  # --- Products background worker (Procrastinate; invoice-line generation jobs) ---
+  - type: worker
+    name: oakmore-products-worker
+    runtime: python
+    buildCommand: pip install -e ./services/products-service
+    startCommand: python -m app.worker --app-dir services/products-service
+    envVars:
+      - key: TENANT_ATTENTIVE_DATABASE_URL
+        sync: false
+
+  # --- Reflex front end (Oakmore-branded SPA) ---
+  - type: web
+    name: oakmore-web
+    runtime: python
+    buildCommand: pip install -r ./web/requirements.txt && reflex export --frontend-only
+    startCommand: reflex run --env prod --backend-port $PORT
+    envVars:
+      - key: GATEWAY_URL
+        value: https://oakmore-gateway.onrender.com/
+
+# Postgres: one instance per tenant, provisioned by the Tenant service via the Render API
+# (kept out of the blueprint so onboarding is dynamic). Example manual entry:
+# databases:
+#   - name: tenant-attentive
+#     plan: standard
