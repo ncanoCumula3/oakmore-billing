@@ -30,7 +30,7 @@ h2{color:var(--navy)} .mut{color:#8a94a2;font-size:13px}
 <script>
 const API=location.origin, H={'X-Company-Id':'3','content-type':'application/json'};
 const app=document.getElementById('app');
-async function j(u,o){const r=await fetch(API+u,o);return r.ok?r.json():[]}
+async function j(u,o){o=o||{};o.headers=Object.assign({},H,o.headers||{});const r=await fetch(API+u,o);return r.ok?r.json():[]}
 async function clients(q=''){
   app.innerHTML='<div class=mut>loading…</div>';
   const cs=await j('/clients?limit=50&q='+encodeURIComponent(q));
