@@ -18,10 +18,11 @@ from .domain import Product as DProduct, Enrollment, MemberCtx
 from .enums import PricingModel, Payer, Scope, LineType
 from .generator import generate_invoice
 
-from . import accounts, ui
+from . import accounts, ui, mm
 
-app = FastAPI(title="Oakmore Billing — Core API (MVP)", version="0.1.0")
+app = FastAPI(title="Oakmore Billing — Member Manager", version="0.2.0")
 app.include_router(accounts.router)
+app.include_router(mm.router)
 app.include_router(ui.router)
 
 # permissive CORS for the Reflex UI (tighten at the gateway later)
