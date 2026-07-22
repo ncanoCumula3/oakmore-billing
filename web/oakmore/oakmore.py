@@ -24,6 +24,15 @@ class State(rx.State):
     search: str = ""
 
     @rx.event
+    def set_search(self, value: str):
+        self.search = value
+
+    @rx.event
+    def back_to_clients(self):
+        self.client_id = 0
+        self.members, self.lines, self.total = [], [], ""
+
+    @rx.event
     async def load_clients(self):
         self.loading = True
         yield
@@ -120,7 +129,7 @@ def index() -> rx.Component:
             rx.cond(State.client_id == 0, clients_view(), client_detail()),
             padding="1.5rem", width="100%", max_width="900px",
         ),
-        rx.button("← Clients", on_click=State.setvar("client_id", 0),
+        rx.button("← Clients", on_click=State.back_to_clients,
                   variant="ghost", margin="1rem", display=rx.cond(State.client_id == 0, "none", "block")),
         width="100%", align="center", spacing="0",
     )

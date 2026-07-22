@@ -1,0 +1,13 @@
+:{$PORT}
+encode gzip
+
+@backend path /_event* /ping /_upload*
+handle @backend {
+	reverse_proxy localhost:8000
+}
+
+handle {
+	root * /app/.web/_static
+	try_files {path} {path}/ /404.html
+	file_server
+}
