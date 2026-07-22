@@ -107,6 +107,38 @@ async def update_member(mid: int, s: S, body: dict = Body(...)):
     return {"updated": 1, "fields": list(sets)}
 
 
+@router.post("/members")
+async def create_member(s: S, body: dict = Body(...)):
+    cols = {"client_id","first_name","last_name","ssn","date_of_birth","email","phone_num","dependent_type",
+            "client_dept","client_employee_id","address_line1","city","state","zip_code","sequence_num",
+            "admin_fee_after_tax","pcm_pre_tax","pcm_after_tax","simrp_fee_after_tax"}
+    d = {k: v for k, v in body.items() if k in cols and v not in (None, "")}
+    d.setdefault("dependent_type", "E")
+    if not d.get("sequence_num"):
+        nxt = (await s.execute(text("""SELECT COALESCE(MAX(NULLIF(regexp_replace(sequence_num,'\\D','','g'),'')::int),0)+1
+                                       FROM members WHERE client_id=:c"""), {"c": d["client_id"]})).scalar()
+        d["sequence_num"] = str(nxt or 1)
+    keys = ",".join(d); ph = ",".join(f":{k}" for k in d)
+    mid = (await s.execute(text(f"INSERT INTO members({keys}) VALUES({ph}) RETURNING id"), d)).scalar()
+    eff = body.get("effective_date", date.today())
+    await s.execute(text("""INSERT INTO member_status(member_id,member_status,effective_date,comment,modified_by,modified_date,is_invalid)
+        VALUES(:m,'ACTIVE',:e,'created via Oakmore MM','oakmore-ui',now(),false)"""), {"m": mid, "e": eff})
+    await s.commit()
+    return {"id": mid, "status": "ACTIVE"}
+
+
+@router.patch("/clients/{cid}")
+async def update_client(cid: int, s: S, body: dict = Body(...)):
+    allowed = {"client_name","client_status","lives","billing_freq","payment_method","account_manager",
+               "primary_contact","payroll_contact","payroll_contact_email","address_line1","city","state","zip_code"}
+    sets = {k: v for k, v in body.items() if k in allowed}
+    if not sets: return {"updated": 0}
+    frag = ", ".join(f"{k}=:{k}" for k in sets)
+    await s.execute(text(f"UPDATE clients SET {frag} WHERE id=:i"), {**sets, "i": cid})
+    await s.commit()
+    return {"updated": 1, "fields": list(sets)}
+
+
 @router.post("/members/{mid}/status")
 async def add_status(mid: int, s: S, body: dict = Body(...)):
     await s.execute(text("""INSERT INTO member_status(member_id,member_status,effective_date,comment,modified_by,modified_date,is_invalid)

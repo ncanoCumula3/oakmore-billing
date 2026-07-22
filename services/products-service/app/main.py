@@ -18,12 +18,32 @@ from .domain import Product as DProduct, Enrollment, MemberCtx
 from .enums import PricingModel, Payer, Scope, LineType
 from .generator import generate_invoice
 
-from . import accounts, ui, mm
+from . import accounts, ui, mm, invoicing
+import os, hmac, hashlib, base64, time
+from fastapi import Body
 
-app = FastAPI(title="Oakmore Billing — Member Manager", version="0.2.0")
+app = FastAPI(title="Oakmore Billing — Member Manager", version="0.3.0")
 app.include_router(accounts.router)
 app.include_router(mm.router)
+app.include_router(invoicing.router)
 app.include_router(ui.router)
+
+# ---- minimal auth (UI gate). Replace with core-auth later. ----
+_SECRET = os.environ.get("OAKMORE_SECRET", "oakmore-dev-secret")
+_PW = os.environ.get("OAKMORE_PASSWORD", "Qwe.214!")
+
+def _token(email: str) -> str:
+    payload = f"{email}|{int(time.time())}"
+    sig = hmac.new(_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:24]
+    return base64.urlsafe_b64encode(f"{payload}|{sig}".encode()).decode()
+
+@app.post("/auth/login")
+async def login(body: dict = Body(...)):
+    email = (body.get("email") or "").strip().lower()
+    if body.get("password") != _PW or not email:
+        raise HTTPException(401, "invalid credentials")
+    tenant = body.get("tenant_id", "3")
+    return {"token": _token(email), "email": email, "name": email.split("@")[0].replace(".", " ").title(), "tenant_id": tenant}
 
 # permissive CORS for the Reflex UI (tighten at the gateway later)
 from fastapi.middleware.cors import CORSMiddleware
