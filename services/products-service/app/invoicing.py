@@ -68,17 +68,17 @@ async def generate(s: S, body: dict = Body(...)):
         VALUES(:c,:n,:m,'DRAFT',:ef,:ee,:tf,:mc,:lc) RETURNING id"""),
         {"c": cid, "n": cname, "m": sm, "ef": inv.employer_fee, "ee": inv.employee_fee, "tf": inv.total_fee,
          "mc": len([mi for mi in inv.member_invoices if mi.member_id]), "lc": len(inv.all_lines)})).scalar()
-    # lines
-    for mi in inv.member_invoices:
-        for l in mi.lines:
-            await s.execute(text("""INSERT INTO billing.invoice_line_items
-              (billing_invoice_id,client_invoice_id,member_id,product_id,product_code,description,line_type,
-               quantity,unit_price,proration_factor,amount,payer,employer_amount,employee_amount,taxable,gl_account,service_month)
-              VALUES(:bi,0,:mid,:pid,:pc,:d,:lt,:q,:up,:pf,:amt,:pay,:er,:ee,:tax,:gl,:sm)"""),
-              {"bi": hid, "mid": l.member_id, "pid": code2id.get(l.product_code, 0), "pc": l.product_code,
+    # lines — batch insert (executemany) so large clients don't time out
+    params = [{"bi": hid, "mid": l.member_id, "pid": code2id.get(l.product_code, 0), "pc": l.product_code,
                "d": l.description, "lt": l.line_type.value, "q": l.quantity, "up": l.unit_price,
                "pf": l.proration_factor, "amt": l.amount, "pay": l.payer.value, "er": l.employer_amount,
-               "ee": l.employee_amount, "tax": l.taxable, "gl": l.gl_account, "sm": l.service_month})
+               "ee": l.employee_amount, "tax": l.taxable, "gl": l.gl_account, "sm": l.service_month}
+              for mi in inv.member_invoices for l in mi.lines]
+    if params:
+        await s.execute(text("""INSERT INTO billing.invoice_line_items
+          (billing_invoice_id,client_invoice_id,member_id,product_id,product_code,description,line_type,
+           quantity,unit_price,proration_factor,amount,payer,employer_amount,employee_amount,taxable,gl_account,service_month)
+          VALUES(:bi,0,:mid,:pid,:pc,:d,:lt,:q,:up,:pf,:amt,:pay,:er,:ee,:tax,:gl,:sm)"""), params)
     await s.commit()
     return {"id": hid, "client_name": cname, "total_fee": str(inv.total_fee),
             "member_count": len([mi for mi in inv.member_invoices if mi.member_id]), "line_count": len(inv.all_lines), "status": "DRAFT"}
